@@ -1,5 +1,5 @@
 {
-  "name": "objLoader",
+  "name": "obj-mtl-loader",
   "version": "0.0.0",
   "description": "OBJ and MTL loader for WebGL",
   "main": "src/objLoader.js",
