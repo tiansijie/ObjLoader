@@ -1,0 +1,21 @@
+{
+  "name": "obj-loader-example",
+  "version": "0.0.0",
+  "description": "obj loader example",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app.js",
+    "dev": "webpack-dev-server --devtool eval --progress --colors --content-base build"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.12.4",
+    "express": "^4.12.4",
+    "node-libs-browser": "^0.5.2",
+    "three": "^0.71.0",
+    "three-orbit-controls": "^69.0.4",
+    "webpack": "^1.9.10"
+  }
+}
