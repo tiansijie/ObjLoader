@@ -1,13 +1,57 @@
-# ObjLoader
+# obj-mtl-loader
+
 An obj file loader for WebGL, including .mtl loder
 
-It's going to be an npm module
+** Install **
+
+Using [npm](https://www.npmjs.com/)
+
+```javascript
+npm install obj-mtl-loader
+```
+
+** Example **
+
+* only obj file
+  ```javascript
+  var ObjMtlLoader = require(obj-mtl-loader);
+  var objMtlloader = new ObjMtlLoader();
+  objMtlloader.load("./test/objfiles/bunny.obj", function(err, result) {
+    if(err){
+      /*Handle error here*/
+    }
+    var vertices = result.vertices;
+    var faces = result.faces;
+    var normals = result.normals;
+  });
+  ```
+
+* with materials(.mtl)
+
+  ```javascript
+  var ObjMtlLoader = require(obj-mtl-loader);
+  var objMtlloader = new ObjMtlLoader();
+  objMtlloader.load("./test/objfiles/sponza/sponza.obj", "./test/objfiles/sponza/sponza.mtl", function(err, result) {
+    if(err){
+      /*Handle error here*/
+    }
+    var vertices = result.vertices;
+    var faces = result.faces;
+    var normals = result.normals;
+    var facesMaterialsIndex = result.facesMaterialsIndex;
+    var materials = result.materials;
+  });
+  ```
+
+
+
+** Attributes **
 
 
 * vertices: Double Array, each item is an array with 3 or 4 numbers
 * normals: Double Array, each item is an array with 3 numbers
 * textureCoords: Double Array, each item is an array with 2 or 3 numbers
-* faces: Objects inside Array, each Object is 
+* faces: Objects inside Array, each Object is
 
   * indices: the index of the vertices for this face
   * texture: the texture index for this face
@@ -16,8 +60,8 @@ It's going to be an npm module
 * facesMaterialsIndex(Optional): Objects inside Array, each object is
   * materialName: The name of the material in mtl file
   * materialStartIndex: The start index of this material
-  
-  
+
+
 * materials: Objects inside Array, each object is
   * name: Name of the material
   * ambient: Ambient color, **Ka**
@@ -32,5 +76,3 @@ It's going to be an npm module
   * alphaMat: Alpha map, **map_d**
   * bumpMap: Bump map, **map_bump**
   * displacementMap: Displacement map, **disp**
-   
-
