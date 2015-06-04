@@ -106,7 +106,6 @@ ObjLoader.prototype.createReadStream = function(fileString) {
 
 ObjLoader.prototype.parseObj = function(line) {
 
-  //var self = this;
   /*Not include comment*/
   var commentStart = line.indexOf("#");
   if(commentStart != -1) {
