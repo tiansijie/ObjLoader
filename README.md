@@ -1,17 +1,18 @@
 # obj-mtl-loader
 
+
 An obj file loader for WebGL, including .mtl loder
 
-** Install **
-
+### Install
+------
 Using [npm](https://www.npmjs.com/)
 
 ```javascript
 npm install obj-mtl-loader
 ```
 
-** Example **
-
+### Example
+------
 * only obj file
   ```javascript
   var ObjMtlLoader = require(obj-mtl-loader);
@@ -45,8 +46,8 @@ npm install obj-mtl-loader
 
 
 
-** Attributes **
-
+### Attributes
+------
 
 * vertices: Double Array, each item is an array with 3 or 4 numbers
 * normals: Double Array, each item is an array with 3 numbers
