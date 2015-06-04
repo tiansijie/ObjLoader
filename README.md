@@ -16,8 +16,8 @@ npm install obj-mtl-loader
 * only obj file
   ```javascript
   var ObjMtlLoader = require(obj-mtl-loader);
-  var objMtlloader = new ObjMtlLoader();
-  objMtlloader.load("./test/objfiles/bunny.obj", function(err, result) {
+  var objMtlLoader = new ObjMtlLoader();
+  objMtlLoader.load("./test/objfiles/bunny.obj", function(err, result) {
     if(err){
       /*Handle error here*/
     }
@@ -31,8 +31,8 @@ npm install obj-mtl-loader
 
   ```javascript
   var ObjMtlLoader = require(obj-mtl-loader);
-  var objMtlloader = new ObjMtlLoader();
-  objMtlloader.load("./test/objfiles/sponza/sponza.obj", "./test/objfiles/sponza/sponza.mtl", function(err, result) {
+  var objMtlLoader = new ObjMtlLoader();
+  objMtlLoader.load("./test/objfiles/sponza/sponza.obj", "./test/objfiles/sponza/sponza.mtl", function(err, result) {
     if(err){
       /*Handle error here*/
     }
