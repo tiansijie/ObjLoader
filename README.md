@@ -15,7 +15,7 @@ npm install obj-mtl-loader
 ------
 * only obj file
   ```javascript
-  var ObjMtlLoader = require(obj-mtl-loader);
+  var ObjMtlLoader = require("obj-mtl-loader");
   var objMtlLoader = new ObjMtlLoader();
   objMtlLoader.load("./test/objfiles/bunny.obj", function(err, result) {
     if(err){
@@ -30,7 +30,7 @@ npm install obj-mtl-loader
 * with materials(.mtl)
 
   ```javascript
-  var ObjMtlLoader = require(obj-mtl-loader);
+  var ObjMtlLoader = require("obj-mtl-loader");
   var objMtlLoader = new ObjMtlLoader();
   objMtlLoader.load("./test/objfiles/sponza/sponza.obj", "./test/objfiles/sponza/sponza.mtl", function(err, result) {
     if(err){
@@ -39,12 +39,13 @@ npm install obj-mtl-loader
     var vertices = result.vertices;
     var faces = result.faces;
     var normals = result.normals;
+    var textureCoords = result.textureCoords;
     var facesMaterialsIndex = result.facesMaterialsIndex;
     var materials = result.materials;
   });
   ```
 
-
+  See more examples on [examples folder](https://github.com/tiansijie/ObjLoader/tree/master/example)
 
 ### Attributes
 ------
@@ -77,3 +78,7 @@ npm install obj-mtl-loader
   * alphaMat: Alpha map, **map_d**
   * bumpMap: Bump map, **map_bump**
   * displacementMap: Displacement map, **disp**
+
+  ### License
+  ------
+  MIT
