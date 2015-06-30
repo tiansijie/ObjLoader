@@ -56,53 +56,99 @@
 	var controls;
 
 
+
+	var positionLocation = null;
+	var normalLocation = null;
+
+	var canvas = document.getElementById("canvas");
+	var gl = webglUtility.createWebGLContext(canvas);
+	if (!gl) {
+	  alert("No WebGL Supported on Your Browser");
+	}
+
+	gl.viewport(0, 0, canvas.width, canvas.height);
+	gl.clearColor(0.0, 0.0, 0.0, 1.0);
+	gl.enable(gl.DEPTH_TEST);
+
+	var near = 0.1;
+	var far = 1000.0;
+
+	var persp = glMatrix.mat4.create();
+	glMatrix.mat4.perspective(persp, 45.0, canvas.width/canvas.height, near, far);
+
+	function sphericalToCartesian( r, a, e ) {
+	  var x = r * Math.cos(e) * Math.cos(a);
+	  var y = r * Math.sin(e);
+	  var z = r * Math.cos(e) * Math.sin(a);
+
+	  return [x,y,z];
+	}
+
+	var invTrans = glMatrix.mat4.create();
+
+	var radius = 3000.0;
+	var azimuth = Math.PI;
+	var elevation = 0.0001;
+
+	//camera
+	var eye = sphericalToCartesian(radius, azimuth, elevation);
+	var center = [0.0, 0.0, 0.0];
+	var eyedis = 1.0;
+	var cam_dir = glMatrix.vec3.create();
+
+	glMatrix.vec3.normalize(cam_dir, glMatrix.vec3.create([center[0]-eye[0], center[1]-eye[1], center[2]-eye[2]]));
+
+	var up = [0.0, 1.0, 0.0];
+	var view = glMatrix.mat4.create();
+	glMatrix.mat4.lookAt(view, eye, center, up);
+
+	var viewVector = cam_dir;
+
+	var vBuffers = [];
+	var nBuffers = [];
+	var iBuffers = [];
+
+	function resetCamera()
+	{
+		eye[0] = center[0] + eyedis * Math.cos(azimuth) * Math.cos(elevation);
+		eye[1] = center[1] + eyedis * Math.sin(elevation);
+		eye[2] = center[2] + eyedis * Math.cos(elevation) * Math.sin(azimuth);
+
+		glMatrix.mat4.lookAt(view, eye, center, up);
+	}
+
+	var models = [];
+	function setmodelMatrix()
+	{
+	    for(var i = 0; i < 1; ++i){
+	    	for(var j = 0; j < 1; ++j){
+	            for(var k = 0; k < 1; ++k){
+	        		var matrix = glMatrix.mat4.create();
+	        		glMatrix.mat4.identity(matrix);
+	        		glMatrix.mat4.translate(matrix, matrix,[i*2,j*2,k*2]);
+	        		models.push(matrix);
+	            }
+	    	}
+	    }
+	}
+
+	var shader_prog;
+	// Load shaders
+	var vs = webglUtility.getShaderSource(document.getElementById("vs"));
+	var fs = webglUtility.getShaderSource(document.getElementById("fs"));
+
+	shader_prog = webglUtility.createProgram(gl, vs, fs, "");
+	var positionLocation = gl.getAttribLocation(shader_prog, "Position");
+	var normalLocation = gl.getAttribLocation(shader_prog, "Normal");
+	var u_ModelLocation = gl.getUniformLocation(shader_prog,"u_Model");
+	var u_ViewLocation = gl.getUniformLocation(shader_prog,"u_View");
+	var u_PerspLocation = gl.getUniformLocation(shader_prog,"u_Persp");
+	var u_InvTransLocation = gl.getUniformLocation(shader_prog,"u_InvTrans");
+
+
 	function initWebGL() {
 
-	  var positionLocation = null;
-	  var normalLocation = null;
-
-	  var canvas = document.getElementById("canvas");
-	  var gl = webglUtility.createWebGLContext(canvas);
-	  if (!gl) {
-	    alert("No WebGL Supported on Your Browser");
-	  }
-
-	  gl.viewport(0, 0, canvas.width, canvas.height);
-	  gl.clearColor(0.0, 0.0, 0.0, 1.0);
-	  gl.enable(gl.DEPTH_TEST);
-
-	  var near = 0.1;
-	  var far = 3000.0;
-
-	  var persp = glMatrix.mat4.create();
-	  glMatrix.mat4.perspective(45.0, canvas.width/canvas.height, near, far, persp);
-
-	  function sphericalToCartesian( r, a, e ) {
-	    var x = r * Math.cos(e) * Math.cos(a);
-	    var y = r * Math.sin(e);
-	    var z = r * Math.cos(e) * Math.sin(a);
-
-	    return [x,y,z];
-	  }
-
-	  var invTrans = glMatrix.mat4.create();
-
-	  var radius = 100.0;
-	  var azimuth = Math.PI;
-	  var elevation = 0.0001;
-
-	  //camera
-	  var eye = sphericalToCartesian(radius, azimuth, elevation);
-	  var center = [0.0, 3.0, 0.0];
-	  var eyedis = 1.0;
-	  var cam_dir = glMatrix.vec3.create();
-	  glMatrix.vec3.normalize(cam_dir, glMatrix.vec3.create([center[0]-eye[0], center[1]-eye[1], center[2]-eye[2]]));
-	  var up = [0.0, 1.0, 0.0];
-	  var view = glMatrix.mat4.create();
-	  glMatrix.mat4.lookAt(eye, center, up, view);
-
-	  var viewVector = cam_dir;
-
+	  setmodelMatrix();
 	  var objloader = new ObjLoader();
 	  objloader.load("./test/objfiles/bunny2.obj", function(err, result) {
 	    if(err) {
@@ -156,16 +202,12 @@
 	        }
 	      }
 
-	      var vBuffers = [];
-	      var nBuffers = [];
-	      var iBuffers = [];
 
 	      var vertexBuffer = gl.createBuffer();
 	      gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
 	      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(bufferVertices), gl.STATIC_DRAW);
 	      vertexBuffer.numItems = bufferVertices.length / 3;
 	      vBuffers.push(vertexBuffer);
-
 
 	      var normalBuffer = gl.createBuffer();
 	      gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
@@ -178,10 +220,52 @@
 	      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(meshIndex), gl.STATIC_DRAW);
 	      indexBuffer.numItems = meshIndex.length;
 	      iBuffers.push(indexBuffer);
-	      
+
 	    }
 	  });
 
+
+	}
+
+
+	function animate() {
+	    window.requestAnimationFrame(animate);
+	    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+	    gl.disable(gl.BLEND);
+	    gl.enable(gl.DEPTH_TEST);
+	    draw();
+	}
+
+	var mv = glMatrix.mat4.create();
+
+	function draw() {
+	  if(vBuffers.length !== 0 && nBuffers.length !== 0 && iBuffers.length !== 0) {
+	    resetCamera();
+
+	    gl.useProgram(shader_prog);
+	    gl.enableVertexAttribArray(positionLocation);
+	    gl.enableVertexAttribArray(normalLocation);
+
+	    gl.bindBuffer(gl.ARRAY_BUFFER, vBuffers[0]);
+	    gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+
+	    gl.bindBuffer(gl.ARRAY_BUFFER, nBuffers[0]);
+	    gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);
+
+	    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iBuffers[0]);
+
+	    gl.uniformMatrix4fv(u_ModelLocation, false, models[0]);
+	    gl.uniformMatrix4fv(u_ViewLocation, false, view);
+		  gl.uniformMatrix4fv(u_PerspLocation, false, persp);
+		  //gl.uniformMatrix4fv(u_InvTransLocation, false, invTrans);
+
+	    gl.drawElements(gl.TRIANGLES, iBuffers[0].numItems, gl.UNSIGNED_SHORT, 0);
+
+	    gl.disableVertexAttribArray(positionLocation);
+	    gl.disableVertexAttribArray(normalLocation);
+	    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+	    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+	  }
 
 	}
 
@@ -322,14 +406,16 @@
 
 
 	function render() {
-	  requestAnimationFrame( render );
+	  //requestAnimationFrame( render );
 	  renderer.render( scene, camera );
 	  controls.update();
 	}
 
 	initWebGL();
-	init();
-	render();
+	animate();
+
+	// init();
+	// render();
 
 
 /***/ },

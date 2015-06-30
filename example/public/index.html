@@ -3,6 +3,45 @@
         <meta charset="utf-8">
     </head>
     <body>
+        <script id="vs" type="x-shader/x-vertex">
+            precision highp float;
+            uniform mat4 u_Model;
+            uniform mat4 u_View;
+            uniform mat4 u_Persp;
+            uniform mat4 u_InvTrans;
+
+            attribute vec3 Position;
+            attribute vec3 Normal;
+
+            varying vec3 fs_Normal;
+            varying vec4 fs_Position;
+            void main(void) {
+                    fs_Normal = Normal.xyz;//((u_InvTrans*vec4(Normal,0.0)).xyz);
+                    vec4 world = u_Model * vec4(Position, 1.0);
+                    vec4 camera = u_View * world;
+                    fs_Position = camera;
+                    gl_Position = u_Persp * camera;
+            }
+        </script>
+
+        <script id="fs" type="x-shader/x-fragment">
+            precision highp float;
+
+            uniform vec3 u_Color;
+
+            varying vec3 fs_Normal;
+            varying vec4 fs_Position;
+
+            void main(void) {
+
+                vec3 position = fs_Position.xyz;
+                vec3 normal = normalize(fs_Normal);
+
+                gl_FragColor = vec4(0.9, 0.5, 0.5, 1.0);
+            }
+
+        </script>
+
         <canvas id="canvas" style="border: none;" width="1024px" height="768px" tabindex="1"></canvas>
         <script type="text/javascript" src="bundle.js" charset="utf-8"></script>
     </body>
