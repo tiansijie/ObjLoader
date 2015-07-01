@@ -9,8 +9,6 @@ var camera;
 var renderer;
 var controls;
 
-
-
 var positionLocation = null;
 var normalLocation = null;
 
@@ -22,10 +20,9 @@ if (!gl) {
 
 gl.viewport(0, 0, canvas.width, canvas.height);
 gl.clearColor(0.0, 0.0, 0.0, 1.0);
-gl.enable(gl.DEPTH_TEST);
 
 var near = 0.1;
-var far = 1000.0;
+var far = 100.0;
 
 var persp = glMatrix.mat4.create();
 glMatrix.mat4.perspective(persp, 45.0, canvas.width/canvas.height, near, far);
@@ -40,7 +37,7 @@ function sphericalToCartesian( r, a, e ) {
 
 var invTrans = glMatrix.mat4.create();
 
-var radius = 3000.0;
+var radius = 10.0;
 var azimuth = Math.PI;
 var elevation = 0.0001;
 
@@ -58,9 +55,9 @@ glMatrix.mat4.lookAt(view, eye, center, up);
 
 var viewVector = cam_dir;
 
-var vBuffers = [];
-var nBuffers = [];
-var iBuffers = [];
+var vBuffer = null;
+var nBuffer = null;
+var iBuffer = null;
 
 function resetCamera()
 {
@@ -71,40 +68,27 @@ function resetCamera()
 	glMatrix.mat4.lookAt(view, eye, center, up);
 }
 
-var models = [];
-function setmodelMatrix()
-{
-    for(var i = 0; i < 1; ++i){
-    	for(var j = 0; j < 1; ++j){
-            for(var k = 0; k < 1; ++k){
-        		var matrix = glMatrix.mat4.create();
-        		glMatrix.mat4.identity(matrix);
-        		glMatrix.mat4.translate(matrix, matrix,[i*2,j*2,k*2]);
-        		models.push(matrix);
-            }
-    	}
-    }
-}
+var models = glMatrix.mat4.create();
+glMatrix.mat4.identity(models);
 
 var shader_prog;
-// Load shaders
+
+/* Load shaders */
 var vs = webglUtility.getShaderSource(document.getElementById("vs"));
 var fs = webglUtility.getShaderSource(document.getElementById("fs"));
 
 shader_prog = webglUtility.createProgram(gl, vs, fs, "");
+
 var positionLocation = gl.getAttribLocation(shader_prog, "Position");
 var normalLocation = gl.getAttribLocation(shader_prog, "Normal");
 var u_ModelLocation = gl.getUniformLocation(shader_prog,"u_Model");
 var u_ViewLocation = gl.getUniformLocation(shader_prog,"u_View");
 var u_PerspLocation = gl.getUniformLocation(shader_prog,"u_Persp");
-var u_InvTransLocation = gl.getUniformLocation(shader_prog,"u_InvTrans");
-
 
 function initWebGL() {
 
-  setmodelMatrix();
   var objloader = new ObjLoader();
-  objloader.load("./test/objfiles/bunny2.obj", function(err, result) {
+  objloader.load("./test/objfiles/suzanne/suzanne.obj", function(err, result) {
     if(err) {
       console.error(err);
     }
@@ -144,9 +128,28 @@ function initWebGL() {
 
           if(normals.length != 0) {
             for(var k = 0; k < 3; ++k) {
-              meshNormals.push(normals[faces[i].normal[0]-1][0]);
-              meshNormals.push(normals[faces[i].normal[0]-1][1]);
-              meshNormals.push(normals[faces[i].normal[0]-1][2]);
+              meshNormals.push(normals[faces[i].normal[k]-1][0]);
+              meshNormals.push(normals[faces[i].normal[k]-1][1]);
+              meshNormals.push(normals[faces[i].normal[k]-1][2]);
+            }
+          }
+          else {
+            var calNormal = glMatrix.vec3.create();
+            var aV = glMatrix.vec3.fromValues(
+              vertices[index2][0] - vertices[index1][0],
+              vertices[index2][1] - vertices[index1][1],
+              vertices[index2][2] - vertices[index1][2]
+            );
+            var bV = glMatrix.vec3.fromValues(
+              vertices[index3][0] - vertices[index2][0],
+              vertices[index3][1] - vertices[index2][1],
+              vertices[index3][2] - vertices[index2][2]
+            );
+            glMatrix.vec3.cross(calNormal, aV, bV);
+            for(var k = 0; k < 3; ++k) {
+              meshNormals.push(calNormal[0]);
+              meshNormals.push(calNormal[1]);
+              meshNormals.push(calNormal[2]);
             }
           }
 
@@ -156,25 +159,23 @@ function initWebGL() {
         }
       }
 
-
       var vertexBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(bufferVertices), gl.STATIC_DRAW);
       vertexBuffer.numItems = bufferVertices.length / 3;
-      vBuffers.push(vertexBuffer);
+      vBuffer = vertexBuffer;
 
       var normalBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(meshNormals), gl.STATIC_DRAW);
-      meshNormals.numItems = meshNormals.length / 3;
-      nBuffers.push(normalBuffer);
+      normalBuffer.numItems = meshNormals.length / 3;
+      nBuffer = normalBuffer;
 
       var indexBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
       gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(meshIndex), gl.STATIC_DRAW);
       indexBuffer.numItems = meshIndex.length;
-      iBuffers.push(indexBuffer);
-
+      iBuffer = indexBuffer;
     }
   });
 
@@ -190,37 +191,32 @@ function animate() {
     draw();
 }
 
-var mv = glMatrix.mat4.create();
-
 function draw() {
-  if(vBuffers.length !== 0 && nBuffers.length !== 0 && iBuffers.length !== 0) {
-    resetCamera();
-
+  if(vBuffer || nBuffer || iBuffer) {
     gl.useProgram(shader_prog);
     gl.enableVertexAttribArray(positionLocation);
-    gl.enableVertexAttribArray(normalLocation);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, vBuffers[0]);
-    gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, nBuffers[0]);
-    gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);
-
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iBuffers[0]);
-
-    gl.uniformMatrix4fv(u_ModelLocation, false, models[0]);
+    gl.uniformMatrix4fv(u_ModelLocation, false, models);
     gl.uniformMatrix4fv(u_ViewLocation, false, view);
 	  gl.uniformMatrix4fv(u_PerspLocation, false, persp);
-	  //gl.uniformMatrix4fv(u_InvTransLocation, false, invTrans);
 
-    gl.drawElements(gl.TRIANGLES, iBuffers[0].numItems, gl.UNSIGNED_SHORT, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, vBuffer);
+    gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
+
+    gl.enableVertexAttribArray(normalLocation);
+    gl.bindBuffer(gl.ARRAY_BUFFER, nBuffer);
+    gl.vertexAttribPointer(normalLocation, 3, gl.FLOAT, false, 0, 0);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, iBuffer);
+
+    gl.drawElements(gl.TRIANGLES, iBuffer.numItems, gl.UNSIGNED_SHORT, 0);
 
     gl.disableVertexAttribArray(positionLocation);
     gl.disableVertexAttribArray(normalLocation);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
   }
-
 }
 
 

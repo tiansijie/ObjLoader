@@ -26,9 +26,6 @@
 
         <script id="fs" type="x-shader/x-fragment">
             precision highp float;
-
-            uniform vec3 u_Color;
-
             varying vec3 fs_Normal;
             varying vec4 fs_Position;
 
@@ -37,7 +34,7 @@
                 vec3 position = fs_Position.xyz;
                 vec3 normal = normalize(fs_Normal);
 
-                gl_FragColor = vec4(0.9, 0.5, 0.5, 1.0);
+                gl_FragColor = vec4(normal, 1.0);
             }
 
         </script>
