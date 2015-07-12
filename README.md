@@ -13,6 +13,12 @@ npm install obj-mtl-loader
 
 ### Example
 ------
+
+To run example, ```npm install```, then run ```npm start```, you should see the obj loader working on your http://localhost:3001/.
+
+If you want to edit the example, make sure you run ```webpack``` after you make any changes or you can run ```webpack --progress --colors --watch``` as the watch mode for webpack.
+
+
 * only obj file
   ```javascript
   var ObjMtlLoader = require("obj-mtl-loader");
@@ -79,6 +85,6 @@ npm install obj-mtl-loader
   * bumpMap: Bump map, **map_bump**
   * displacementMap: Displacement map, **disp**
 
-  ### License
-  ------
+### License
+------
   MIT
