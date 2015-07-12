@@ -44,7 +44,7 @@
 /* 0 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var ObjLoader = __webpack_require__(33);
+	var ObjLoader = __webpack_require__(1);
 	var THREE = __webpack_require__(34);
 	var OrbitControls = __webpack_require__(35)(THREE);
 
@@ -54,7 +54,7 @@
 	var controls;
 
 	function init() {
-
+	  console.log("you started");
 	  scene = new THREE.Scene();
 	  camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
 
@@ -188,284 +188,259 @@
 /* 1 */
 /***/ function(module, exports, __webpack_require__) {
 
-	//filter will reemit the data if cb(err,pass) pass is truthy
-
-	// reduce is more tricky
-	// maybe we want to group the reductions or emit progress updates occasionally
-	// the most basic reduce just emits one 'data' event after it has recieved 'end'
+	var stream = __webpack_require__(2);
+	var split = __webpack_require__(25);
+	var xhr = __webpack_require__(27);
 
 
-	var through = __webpack_require__(2)
-	var Decoder = __webpack_require__(18).StringDecoder
+	function ObjLoader() {
 
-	module.exports = split
+	  this.vertices = [];
+	  this.normals = [];
+	  this.textureCoords = [];
+	  this.faces = [];
+	  this.facesMaterialsIndex = [{materialName: null, materialStartIndex: 0}];
+	  this.materials = [];
 
-	//TODO pass in a function to map across the lines.
-
-	function split (matcher, mapper, options) {
-	  var decoder = new Decoder()
-	  var soFar = ''
-	  var maxLength = options && options.maxLength;
-	  if('function' === typeof matcher)
-	    mapper = matcher, matcher = null
-	  if (!matcher)
-	    matcher = /\r?\n/
-
-	  function emit(stream, piece) {
-	    if(mapper) {
-	      try {
-	        piece = mapper(piece)
-	      }
-	      catch (err) {
-	        return stream.emit('error', err)
-	      }
-	      if('undefined' !== typeof piece)
-	        stream.queue(piece)
-	    }
-	    else
-	      stream.queue(piece)
-	  }
-
-	  function next (stream, buffer) {
-	    var pieces = ((soFar != null ? soFar : '') + buffer).split(matcher)
-	    soFar = pieces.pop()
-
-	    if (maxLength && soFar.length > maxLength)
-	      stream.emit('error', new Error('maximum buffer reached'))
-
-	    for (var i = 0; i < pieces.length; i++) {
-	      var piece = pieces[i]
-	      emit(stream, piece)
-	    }
-	  }
-
-	  return through(function (b) {
-	    next(this, decoder.write(b))
-	  },
-	  function () {
-	    if(decoder.end)
-	      next(this, decoder.end())
-	    if(soFar != null)
-	      emit(this, soFar)
-	    this.queue(null)
-	  })
 	}
 
+	ObjLoader.prototype.load = function(objFilePath, mtlFilePath, callback) {
+
+	  var self = this;
+
+	  if(typeof mtlFilePath === "function") {
+	    callback = mtlFilePath;
+	    mtlFilePath = "";
+	  }
+
+	  xhr(objFilePath, function (err, resp, objFileString) {
+	    if(err) {
+	      /*Error Handling*/
+	      callback(err);
+	    }
+	    /*Create readable stream to read obj file line by line*/
+	    var readable = self.createReadStream(objFileString);
+
+	    readable
+	      .pipe(split())
+	      .on('data', function(line) {
+	        self.parseObj(line);
+	      })
+	      .on('end', function() {
+
+	        /*Start reading .mtl file*/
+	        if(typeof mtlFilePath === "string" && mtlFilePath !== "") {
+	          xhr(mtlFilePath, function (err, resp, mtlFileString) {
+
+	            if(err) {
+	              callback(err);
+	            }
+
+	            var currentMat = {};
+	            var readable = self.createReadStream(mtlFileString);
+
+	            readable
+	              .pipe(split())
+	              .on('data', function(line) {
+	                currentMat = self.parseMtl(line, currentMat);
+	              })
+	              .on('end', function() {
+	                /*Geometry and Materials*/
+	                callback(
+	                  null,
+	                  {
+	                    vertices: self.vertices,
+	                    normals: self.normals,
+	                    textureCoords: self.textureCoords,
+	                    faces: self.faces,
+	                    facesMaterialsIndex: self.facesMaterialsIndex,
+	                    materials: self.materials
+	                  }
+	                );
+	              })
+	              .on('err', function(err) {
+	                /*Error Handling*/
+	                callback(err)
+	              });
+	          });
+	        }
+	        else {
+	          /*Only Geometry*/
+	          callback(
+	            null,
+	            {
+	              vertices: self.vertices,
+	              normals: self.normals,
+	              textureCoords: self.textureCoords,
+	              faces: self.faces
+	            }
+	          );
+	        }
+	      })
+	      .on('err', function(err) {
+	        /*Error Handling*/
+	        callback(err);
+	      });
+	  });
+	}
+
+
+	ObjLoader.prototype.createReadStream = function(fileString) {
+	  var readable = new stream.Readable();
+	  readable._read = function noop() {};
+	  readable.push(fileString);
+	  readable.push(null);
+	  return readable;
+	}
+
+
+	ObjLoader.prototype.parseObj = function(line) {
+
+	  /*Not include comment*/
+	  var commentStart = line.indexOf("#");
+	  if(commentStart != -1) {
+	    line = line.substring(0, commentStart);
+	  }
+	  line = line.trim();
+
+	  var splitedLine = line.split(/\s+/);
+
+	  if(splitedLine[0] === 'v') {
+	    var vertex = [Number(splitedLine[1]), Number(splitedLine[2]), Number(splitedLine[3]), splitedLine[4]? 1 : Number(splitedLine[4])];
+	    this.vertices.push(vertex);
+	  }
+	  else if(splitedLine[0] === 'vt') {
+	    var textureCoord = [Number(splitedLine[1]), Number(splitedLine[2]), splitedLine[3]? 1 : Number(splitedLine[3])]
+	    this.textureCoords.push(textureCoord);
+	  }
+	  else if(splitedLine[0] === 'vn') {
+	    var normal = [Number(splitedLine[1]), Number(splitedLine[2]), Number(splitedLine[3])];
+	    this.normals.push(normal);
+	  }
+	  else if(splitedLine[0] === 'f') {
+	    var face = {
+	      indices: [],
+	      texture: [],
+	      normal: []
+	      };
+
+	    for(var i = 1; i < splitedLine.length; ++i) {
+	      var dIndex = splitedLine[i].indexOf('//');
+	      var splitedFaceIndices = splitedLine[i].split(/\W+/);
+
+	      if(dIndex > 0) {
+	        /*Vertex Normal Indices Without Texture Coordinate Indices*/
+	        face.indices.push(splitedFaceIndices[0]);
+	        face.normal.push(splitedFaceIndices[1]);
+	      }
+	      else {
+	        if(splitedFaceIndices.length === 1) {
+	          /*Vertex Indices*/
+	          face.indices.push(splitedFaceIndices[0]);
+	        }
+	        else if(splitedFaceIndices.length === 2) {
+	          /*Vertex Texture Coordinate Indices*/
+	          face.indices.push(splitedFaceIndices[0]);
+	          face.texture.push(splitedFaceIndices[1]);
+	        }
+	        else if(splitedFaceIndices.length === 3) {
+	          /*Vertex Normal Indices*/
+	          face.indices.push(splitedFaceIndices[0]);
+	          face.texture.push(splitedFaceIndices[1]);
+	          face.normal.push(splitedFaceIndices[2]);
+	        }
+	      }
+	    }
+
+	    this.faces.push(face);
+	  }
+	  else if(splitedLine[0] === "usemtl") {
+	    if(this.faces.length === 0) {
+	      this.facesMaterialsIndex[0].materialName = splitedLine[1];
+	    }
+	    else {
+	      var materialName = splitedLine[1];
+	      var materialStartIndex = this.faces.length;
+
+	      this.facesMaterialsIndex.push({materialName: materialName, materialStartIndex: materialStartIndex});
+	    }
+	  }
+	}
+
+
+	ObjLoader.prototype.parseMtl = function(line, currentMat) {
+
+	  /*Not include comment*/
+	  var commentStart = line.indexOf("#");
+	  if(commentStart != -1) {
+	    line = line.substring(0, commentStart);
+	  }
+
+	  line = line.trim();
+	  var splitedLine = line.split(/\s+/);
+
+	  if(splitedLine[0] === "newmtl") {
+	    if(currentMat.name) {
+	      this.materials.push(currentMat);
+	      currentMat = {};
+	    }
+	    currentMat.name = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "Ka") {
+	    currentMat.ambient = [];
+	    for(var i = 0; i < 3; ++i) {
+	      currentMat.ambient.push(splitedLine[i+1]);
+	    }
+	  }
+	  else if(splitedLine[0] === "Kd") {
+	    currentMat.diffuse = [];
+	    for(var i = 0; i < 3; ++i) {
+	      currentMat.diffuse.push(splitedLine[i+1]);
+	    }
+	  }
+	  else if(splitedLine[0] === "Ks") {
+	    currentMat.specular = [];
+	    for(var i = 0; i < 3; ++i) {
+	      currentMat.specular.push(splitedLine[i+1]);
+	    }
+	  }
+	  else if(splitedLine[0] === "Ns") {
+	    currentMat.specularExponent = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "d" || splitedLine[0] === "Tr") {
+	    currentMat.transparent = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "illum") {
+	    currentMat.illumMode = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "map_Ka") {
+	    currentMat.ambientMap = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "map_Kd") {
+	    currentMat.diffuseMap = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "map_Ks") {
+	    currentMat.specularMap = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "map_d") {
+	    currentMat.alphaMat = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "map_bump" || splitedLine[0] === "bump") {
+	    currentMat.bumpMap = splitedLine[1];
+	  }
+	  else if(splitedLine[0] === "disp") {
+	    currentMat.displacementMap = splitedLine[1];
+	  }
+
+	  return currentMat;
+	}
+
+
+	module.exports = ObjLoader;
 
 
 /***/ },
 /* 2 */
-/***/ function(module, exports, __webpack_require__) {
-
-	/* WEBPACK VAR INJECTION */(function(process) {var Stream = __webpack_require__(4)
-
-	// through
-	//
-	// a stream that does nothing but re-emit the input.
-	// useful for aggregating a series of changing but not ending streams into one stream)
-
-	exports = module.exports = through
-	through.through = through
-
-	//create a readable writable stream.
-
-	function through (write, end, opts) {
-	  write = write || function (data) { this.queue(data) }
-	  end = end || function () { this.queue(null) }
-
-	  var ended = false, destroyed = false, buffer = [], _ended = false
-	  var stream = new Stream()
-	  stream.readable = stream.writable = true
-	  stream.paused = false
-
-	//  stream.autoPause   = !(opts && opts.autoPause   === false)
-	  stream.autoDestroy = !(opts && opts.autoDestroy === false)
-
-	  stream.write = function (data) {
-	    write.call(this, data)
-	    return !stream.paused
-	  }
-
-	  function drain() {
-	    while(buffer.length && !stream.paused) {
-	      var data = buffer.shift()
-	      if(null === data)
-	        return stream.emit('end')
-	      else
-	        stream.emit('data', data)
-	    }
-	  }
-
-	  stream.queue = stream.push = function (data) {
-	//    console.error(ended)
-	    if(_ended) return stream
-	    if(data === null) _ended = true
-	    buffer.push(data)
-	    drain()
-	    return stream
-	  }
-
-	  //this will be registered as the first 'end' listener
-	  //must call destroy next tick, to make sure we're after any
-	  //stream piped from here.
-	  //this is only a problem if end is not emitted synchronously.
-	  //a nicer way to do this is to make sure this is the last listener for 'end'
-
-	  stream.on('end', function () {
-	    stream.readable = false
-	    if(!stream.writable && stream.autoDestroy)
-	      process.nextTick(function () {
-	        stream.destroy()
-	      })
-	  })
-
-	  function _end () {
-	    stream.writable = false
-	    end.call(stream)
-	    if(!stream.readable && stream.autoDestroy)
-	      stream.destroy()
-	  }
-
-	  stream.end = function (data) {
-	    if(ended) return
-	    ended = true
-	    if(arguments.length) stream.write(data)
-	    _end() // will emit or queue
-	    return stream
-	  }
-
-	  stream.destroy = function () {
-	    if(destroyed) return
-	    destroyed = true
-	    ended = true
-	    buffer.length = 0
-	    stream.writable = stream.readable = false
-	    stream.emit('close')
-	    return stream
-	  }
-
-	  stream.pause = function () {
-	    if(stream.paused) return
-	    stream.paused = true
-	    return stream
-	  }
-
-	  stream.resume = function () {
-	    if(stream.paused) {
-	      stream.paused = false
-	      stream.emit('resume')
-	    }
-	    drain()
-	    //may have become paused again,
-	    //as drain emits 'data'.
-	    if(!stream.paused)
-	      stream.emit('drain')
-	    return stream
-	  }
-	  return stream
-	}
-
-
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
-
-/***/ },
-/* 3 */
-/***/ function(module, exports, __webpack_require__) {
-
-	// shim for using process in browser
-
-	var process = module.exports = {};
-	var queue = [];
-	var draining = false;
-	var currentQueue;
-	var queueIndex = -1;
-
-	function cleanUpNextTick() {
-	    draining = false;
-	    if (currentQueue.length) {
-	        queue = currentQueue.concat(queue);
-	    } else {
-	        queueIndex = -1;
-	    }
-	    if (queue.length) {
-	        drainQueue();
-	    }
-	}
-
-	function drainQueue() {
-	    if (draining) {
-	        return;
-	    }
-	    var timeout = setTimeout(cleanUpNextTick);
-	    draining = true;
-
-	    var len = queue.length;
-	    while(len) {
-	        currentQueue = queue;
-	        queue = [];
-	        while (++queueIndex < len) {
-	            currentQueue[queueIndex].run();
-	        }
-	        queueIndex = -1;
-	        len = queue.length;
-	    }
-	    currentQueue = null;
-	    draining = false;
-	    clearTimeout(timeout);
-	}
-
-	process.nextTick = function (fun) {
-	    var args = new Array(arguments.length - 1);
-	    if (arguments.length > 1) {
-	        for (var i = 1; i < arguments.length; i++) {
-	            args[i - 1] = arguments[i];
-	        }
-	    }
-	    queue.push(new Item(fun, args));
-	    if (queue.length === 1 && !draining) {
-	        setTimeout(drainQueue, 0);
-	    }
-	};
-
-	// v8 likes predictible objects
-	function Item(fun, array) {
-	    this.fun = fun;
-	    this.array = array;
-	}
-	Item.prototype.run = function () {
-	    this.fun.apply(null, this.array);
-	};
-	process.title = 'browser';
-	process.browser = true;
-	process.env = {};
-	process.argv = [];
-	process.version = ''; // empty string to avoid regexp issues
-	process.versions = {};
-
-	function noop() {}
-
-	process.on = noop;
-	process.addListener = noop;
-	process.once = noop;
-	process.off = noop;
-	process.removeListener = noop;
-	process.removeAllListeners = noop;
-	process.emit = noop;
-
-	process.binding = function (name) {
-	    throw new Error('process.binding is not supported');
-	};
-
-	// TODO(shtylman)
-	process.cwd = function () { return '/' };
-	process.chdir = function (dir) {
-	    throw new Error('process.chdir is not supported');
-	};
-	process.umask = function() { return 0; };
-
-
-/***/ },
-/* 4 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
@@ -491,15 +466,15 @@
 
 	module.exports = Stream;
 
-	var EE = __webpack_require__(5).EventEmitter;
-	var inherits = __webpack_require__(6);
+	var EE = __webpack_require__(3).EventEmitter;
+	var inherits = __webpack_require__(4);
 
 	inherits(Stream, EE);
-	Stream.Readable = __webpack_require__(7);
-	Stream.Writable = __webpack_require__(22);
-	Stream.Duplex = __webpack_require__(23);
-	Stream.Transform = __webpack_require__(24);
-	Stream.PassThrough = __webpack_require__(25);
+	Stream.Readable = __webpack_require__(5);
+	Stream.Writable = __webpack_require__(21);
+	Stream.Duplex = __webpack_require__(22);
+	Stream.Transform = __webpack_require__(23);
+	Stream.PassThrough = __webpack_require__(24);
 
 	// Backwards-compat with node 0.4.x
 	Stream.Stream = Stream;
@@ -598,8 +573,8 @@
 
 
 /***/ },
-/* 5 */
-/***/ function(module, exports, __webpack_require__) {
+/* 3 */
+/***/ function(module, exports) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
 	//
@@ -905,8 +880,8 @@
 
 
 /***/ },
-/* 6 */
-/***/ function(module, exports, __webpack_require__) {
+/* 4 */
+/***/ function(module, exports) {
 
 	if (typeof Object.create === 'function') {
 	  // implementation from standard node.js 'util' module
@@ -934,20 +909,20 @@
 
 
 /***/ },
-/* 7 */
+/* 5 */
 /***/ function(module, exports, __webpack_require__) {
 
-	exports = module.exports = __webpack_require__(15);
-	exports.Stream = __webpack_require__(4);
+	exports = module.exports = __webpack_require__(14);
+	exports.Stream = __webpack_require__(2);
 	exports.Readable = exports;
-	exports.Writable = __webpack_require__(19);
-	exports.Duplex = __webpack_require__(8);
-	exports.Transform = __webpack_require__(20);
-	exports.PassThrough = __webpack_require__(21);
+	exports.Writable = __webpack_require__(18);
+	exports.Duplex = __webpack_require__(6);
+	exports.Transform = __webpack_require__(19);
+	exports.PassThrough = __webpack_require__(20);
 
 
 /***/ },
-/* 8 */
+/* 6 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process) {// Copyright Joyent, Inc. and other Node contributors.
@@ -988,12 +963,12 @@
 
 
 	/*<replacement>*/
-	var util = __webpack_require__(9);
-	util.inherits = __webpack_require__(14);
+	var util = __webpack_require__(8);
+	util.inherits = __webpack_require__(13);
 	/*</replacement>*/
 
-	var Readable = __webpack_require__(15);
-	var Writable = __webpack_require__(19);
+	var Readable = __webpack_require__(14);
+	var Writable = __webpack_require__(18);
 
 	util.inherits(Duplex, Readable);
 
@@ -1040,10 +1015,106 @@
 	  }
 	}
 
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(7)))
 
 /***/ },
-/* 9 */
+/* 7 */
+/***/ function(module, exports) {
+
+	// shim for using process in browser
+
+	var process = module.exports = {};
+	var queue = [];
+	var draining = false;
+	var currentQueue;
+	var queueIndex = -1;
+
+	function cleanUpNextTick() {
+	    draining = false;
+	    if (currentQueue.length) {
+	        queue = currentQueue.concat(queue);
+	    } else {
+	        queueIndex = -1;
+	    }
+	    if (queue.length) {
+	        drainQueue();
+	    }
+	}
+
+	function drainQueue() {
+	    if (draining) {
+	        return;
+	    }
+	    var timeout = setTimeout(cleanUpNextTick);
+	    draining = true;
+
+	    var len = queue.length;
+	    while(len) {
+	        currentQueue = queue;
+	        queue = [];
+	        while (++queueIndex < len) {
+	            currentQueue[queueIndex].run();
+	        }
+	        queueIndex = -1;
+	        len = queue.length;
+	    }
+	    currentQueue = null;
+	    draining = false;
+	    clearTimeout(timeout);
+	}
+
+	process.nextTick = function (fun) {
+	    var args = new Array(arguments.length - 1);
+	    if (arguments.length > 1) {
+	        for (var i = 1; i < arguments.length; i++) {
+	            args[i - 1] = arguments[i];
+	        }
+	    }
+	    queue.push(new Item(fun, args));
+	    if (queue.length === 1 && !draining) {
+	        setTimeout(drainQueue, 0);
+	    }
+	};
+
+	// v8 likes predictible objects
+	function Item(fun, array) {
+	    this.fun = fun;
+	    this.array = array;
+	}
+	Item.prototype.run = function () {
+	    this.fun.apply(null, this.array);
+	};
+	process.title = 'browser';
+	process.browser = true;
+	process.env = {};
+	process.argv = [];
+	process.version = ''; // empty string to avoid regexp issues
+	process.versions = {};
+
+	function noop() {}
+
+	process.on = noop;
+	process.addListener = noop;
+	process.once = noop;
+	process.off = noop;
+	process.removeListener = noop;
+	process.removeAllListeners = noop;
+	process.emit = noop;
+
+	process.binding = function (name) {
+	    throw new Error('process.binding is not supported');
+	};
+
+	// TODO(shtylman)
+	process.cwd = function () { return '/' };
+	process.chdir = function (dir) {
+	    throw new Error('process.chdir is not supported');
+	};
+	process.umask = function() { return 0; };
+
+
+/***/ },
+/* 8 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(Buffer) {// Copyright Joyent, Inc. and other Node contributors.
@@ -1153,10 +1224,10 @@
 	function objectToString(o) {
 	  return Object.prototype.toString.call(o);
 	}
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(10).Buffer))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(9).Buffer))
 
 /***/ },
-/* 10 */
+/* 9 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(Buffer) {/*!
@@ -1166,16 +1237,15 @@
 	 * @license  MIT
 	 */
 
-	var base64 = __webpack_require__(11)
-	var ieee754 = __webpack_require__(12)
-	var isArray = __webpack_require__(13)
+	var base64 = __webpack_require__(10)
+	var ieee754 = __webpack_require__(11)
+	var isArray = __webpack_require__(12)
 
 	exports.Buffer = Buffer
 	exports.SlowBuffer = SlowBuffer
 	exports.INSPECT_MAX_BYTES = 50
 	Buffer.poolSize = 8192 // not used by this implementation
 
-	var kMaxLength = 0x3fffffff
 	var rootParent = {}
 
 	/**
@@ -1201,17 +1271,26 @@
 	 * get the Object implementation, which is slower but will work correctly.
 	 */
 	Buffer.TYPED_ARRAY_SUPPORT = (function () {
+	  function Foo () {}
 	  try {
 	    var buf = new ArrayBuffer(0)
 	    var arr = new Uint8Array(buf)
 	    arr.foo = function () { return 42 }
+	    arr.constructor = Foo
 	    return arr.foo() === 42 && // typed array instances can be augmented
+	        arr.constructor === Foo && // constructor can be set
 	        typeof arr.subarray === 'function' && // chrome 9-10 lack `subarray`
 	        new Uint8Array(1).subarray(1, 1).byteLength === 0 // ie10 has broken `subarray`
 	  } catch (e) {
 	    return false
 	  }
 	})()
+
+	function kMaxLength () {
+	  return Buffer.TYPED_ARRAY_SUPPORT
+	    ? 0x7fffffff
+	    : 0x3fffffff
+	}
 
 	/**
 	 * Class: Buffer
@@ -1363,9 +1442,9 @@
 	function checked (length) {
 	  // Note: cannot use `length < kMaxLength` here because that fails when
 	  // length is NaN (which is otherwise coerced to zero.)
-	  if (length >= kMaxLength) {
+	  if (length >= kMaxLength()) {
 	    throw new RangeError('Attempt to allocate Buffer larger than maximum ' +
-	                         'size: 0x' + kMaxLength.toString(16) + ' bytes')
+	                         'size: 0x' + kMaxLength().toString(16) + ' bytes')
 	  }
 	  return length | 0
 	}
@@ -1457,29 +1536,38 @@
 	}
 
 	function byteLength (string, encoding) {
-	  if (typeof string !== 'string') string = String(string)
+	  if (typeof string !== 'string') string = '' + string
 
-	  if (string.length === 0) return 0
+	  var len = string.length
+	  if (len === 0) return 0
 
-	  switch (encoding || 'utf8') {
-	    case 'ascii':
-	    case 'binary':
-	    case 'raw':
-	      return string.length
-	    case 'ucs2':
-	    case 'ucs-2':
-	    case 'utf16le':
-	    case 'utf-16le':
-	      return string.length * 2
-	    case 'hex':
-	      return string.length >>> 1
-	    case 'utf8':
-	    case 'utf-8':
-	      return utf8ToBytes(string).length
-	    case 'base64':
-	      return base64ToBytes(string).length
-	    default:
-	      return string.length
+	  // Use a for loop to avoid recursion
+	  var loweredCase = false
+	  for (;;) {
+	    switch (encoding) {
+	      case 'ascii':
+	      case 'binary':
+	      // Deprecated
+	      case 'raw':
+	      case 'raws':
+	        return len
+	      case 'utf8':
+	      case 'utf-8':
+	        return utf8ToBytes(string).length
+	      case 'ucs2':
+	      case 'ucs-2':
+	      case 'utf16le':
+	      case 'utf-16le':
+	        return len * 2
+	      case 'hex':
+	        return len >>> 1
+	      case 'base64':
+	        return base64ToBytes(string).length
+	      default:
+	        if (loweredCase) return utf8ToBytes(string).length // assume utf8
+	        encoding = ('' + encoding).toLowerCase()
+	        loweredCase = true
+	    }
 	  }
 	}
 	Buffer.byteLength = byteLength
@@ -1488,8 +1576,7 @@
 	Buffer.prototype.length = undefined
 	Buffer.prototype.parent = undefined
 
-	// toString(encoding, start=0, end=buffer.length)
-	Buffer.prototype.toString = function toString (encoding, start, end) {
+	function slowToString (encoding, start, end) {
 	  var loweredCase = false
 
 	  start = start | 0
@@ -1530,6 +1617,13 @@
 	        loweredCase = true
 	    }
 	  }
+	}
+
+	Buffer.prototype.toString = function toString () {
+	  var length = this.length | 0
+	  if (length === 0) return ''
+	  if (arguments.length === 0) return utf8Slice(this, 0, length)
+	  return slowToString.apply(this, arguments)
 	}
 
 	Buffer.prototype.equals = function equals (b) {
@@ -2574,10 +2668,10 @@
 	  }
 	}
 
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(10).Buffer))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(9).Buffer))
 
 /***/ },
-/* 11 */
+/* 10 */
 /***/ function(module, exports, __webpack_require__) {
 
 	var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -2707,18 +2801,18 @@
 
 
 /***/ },
-/* 12 */
-/***/ function(module, exports, __webpack_require__) {
+/* 11 */
+/***/ function(module, exports) {
 
 	exports.read = function (buffer, offset, isLE, mLen, nBytes) {
-	  var e, m,
-	      eLen = nBytes * 8 - mLen - 1,
-	      eMax = (1 << eLen) - 1,
-	      eBias = eMax >> 1,
-	      nBits = -7,
-	      i = isLE ? (nBytes - 1) : 0,
-	      d = isLE ? -1 : 1,
-	      s = buffer[offset + i]
+	  var e, m
+	  var eLen = nBytes * 8 - mLen - 1
+	  var eMax = (1 << eLen) - 1
+	  var eBias = eMax >> 1
+	  var nBits = -7
+	  var i = isLE ? (nBytes - 1) : 0
+	  var d = isLE ? -1 : 1
+	  var s = buffer[offset + i]
 
 	  i += d
 
@@ -2744,14 +2838,14 @@
 	}
 
 	exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
-	  var e, m, c,
-	      eLen = nBytes * 8 - mLen - 1,
-	      eMax = (1 << eLen) - 1,
-	      eBias = eMax >> 1,
-	      rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0),
-	      i = isLE ? 0 : (nBytes - 1),
-	      d = isLE ? 1 : -1,
-	      s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
+	  var e, m, c
+	  var eLen = nBytes * 8 - mLen - 1
+	  var eMax = (1 << eLen) - 1
+	  var eBias = eMax >> 1
+	  var rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0)
+	  var i = isLE ? 0 : (nBytes - 1)
+	  var d = isLE ? 1 : -1
+	  var s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
 
 	  value = Math.abs(value)
 
@@ -2797,8 +2891,8 @@
 
 
 /***/ },
-/* 13 */
-/***/ function(module, exports, __webpack_require__) {
+/* 12 */
+/***/ function(module, exports) {
 
 	
 	/**
@@ -2836,8 +2930,8 @@
 
 
 /***/ },
-/* 14 */
-/***/ function(module, exports, __webpack_require__) {
+/* 13 */
+/***/ function(module, exports) {
 
 	if (typeof Object.create === 'function') {
 	  // implementation from standard node.js 'util' module
@@ -2865,7 +2959,7 @@
 
 
 /***/ },
-/* 15 */
+/* 14 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process) {// Copyright Joyent, Inc. and other Node contributors.
@@ -2892,17 +2986,17 @@
 	module.exports = Readable;
 
 	/*<replacement>*/
-	var isArray = __webpack_require__(16);
+	var isArray = __webpack_require__(15);
 	/*</replacement>*/
 
 
 	/*<replacement>*/
-	var Buffer = __webpack_require__(10).Buffer;
+	var Buffer = __webpack_require__(9).Buffer;
 	/*</replacement>*/
 
 	Readable.ReadableState = ReadableState;
 
-	var EE = __webpack_require__(5).EventEmitter;
+	var EE = __webpack_require__(3).EventEmitter;
 
 	/*<replacement>*/
 	if (!EE.listenerCount) EE.listenerCount = function(emitter, type) {
@@ -2910,18 +3004,18 @@
 	};
 	/*</replacement>*/
 
-	var Stream = __webpack_require__(4);
+	var Stream = __webpack_require__(2);
 
 	/*<replacement>*/
-	var util = __webpack_require__(9);
-	util.inherits = __webpack_require__(14);
+	var util = __webpack_require__(8);
+	util.inherits = __webpack_require__(13);
 	/*</replacement>*/
 
 	var StringDecoder;
 
 
 	/*<replacement>*/
-	var debug = __webpack_require__(17);
+	var debug = __webpack_require__(16);
 	if (debug && debug.debuglog) {
 	  debug = debug.debuglog('stream');
 	} else {
@@ -2933,7 +3027,7 @@
 	util.inherits(Readable, Stream);
 
 	function ReadableState(options, stream) {
-	  var Duplex = __webpack_require__(8);
+	  var Duplex = __webpack_require__(6);
 
 	  options = options || {};
 
@@ -2994,14 +3088,14 @@
 	  this.encoding = null;
 	  if (options.encoding) {
 	    if (!StringDecoder)
-	      StringDecoder = __webpack_require__(18).StringDecoder;
+	      StringDecoder = __webpack_require__(17).StringDecoder;
 	    this.decoder = new StringDecoder(options.encoding);
 	    this.encoding = options.encoding;
 	  }
 	}
 
 	function Readable(options) {
-	  var Duplex = __webpack_require__(8);
+	  var Duplex = __webpack_require__(6);
 
 	  if (!(this instanceof Readable))
 	    return new Readable(options);
@@ -3104,7 +3198,7 @@
 	// backwards compatibility.
 	Readable.prototype.setEncoding = function(enc) {
 	  if (!StringDecoder)
-	    StringDecoder = __webpack_require__(18).StringDecoder;
+	    StringDecoder = __webpack_require__(17).StringDecoder;
 	  this._readableState.decoder = new StringDecoder(enc);
 	  this._readableState.encoding = enc;
 	  return this;
@@ -3820,11 +3914,11 @@
 	  return -1;
 	}
 
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(7)))
 
 /***/ },
-/* 16 */
-/***/ function(module, exports, __webpack_require__) {
+/* 15 */
+/***/ function(module, exports) {
 
 	module.exports = Array.isArray || function (arr) {
 	  return Object.prototype.toString.call(arr) == '[object Array]';
@@ -3832,13 +3926,13 @@
 
 
 /***/ },
-/* 17 */
-/***/ function(module, exports, __webpack_require__) {
+/* 16 */
+/***/ function(module, exports) {
 
 	/* (ignored) */
 
 /***/ },
-/* 18 */
+/* 17 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
@@ -3862,7 +3956,7 @@
 	// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 	// USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-	var Buffer = __webpack_require__(10).Buffer;
+	var Buffer = __webpack_require__(9).Buffer;
 
 	var isBufferEncoding = Buffer.isEncoding
 	  || function(encoding) {
@@ -4065,7 +4159,7 @@
 
 
 /***/ },
-/* 19 */
+/* 18 */
 /***/ function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process) {// Copyright Joyent, Inc. and other Node contributors.
@@ -4096,18 +4190,18 @@
 	module.exports = Writable;
 
 	/*<replacement>*/
-	var Buffer = __webpack_require__(10).Buffer;
+	var Buffer = __webpack_require__(9).Buffer;
 	/*</replacement>*/
 
 	Writable.WritableState = WritableState;
 
 
 	/*<replacement>*/
-	var util = __webpack_require__(9);
-	util.inherits = __webpack_require__(14);
+	var util = __webpack_require__(8);
+	util.inherits = __webpack_require__(13);
 	/*</replacement>*/
 
-	var Stream = __webpack_require__(4);
+	var Stream = __webpack_require__(2);
 
 	util.inherits(Writable, Stream);
 
@@ -4118,7 +4212,7 @@
 	}
 
 	function WritableState(options, stream) {
-	  var Duplex = __webpack_require__(8);
+	  var Duplex = __webpack_require__(6);
 
 	  options = options || {};
 
@@ -4206,7 +4300,7 @@
 	}
 
 	function Writable(options) {
-	  var Duplex = __webpack_require__(8);
+	  var Duplex = __webpack_require__(6);
 
 	  // Writable ctor is applied to Duplexes, though they're not
 	  // instanceof Writable, they're instanceof Readable.
@@ -4546,10 +4640,10 @@
 	  state.ended = true;
 	}
 
-	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(7)))
 
 /***/ },
-/* 20 */
+/* 19 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
@@ -4618,11 +4712,11 @@
 
 	module.exports = Transform;
 
-	var Duplex = __webpack_require__(8);
+	var Duplex = __webpack_require__(6);
 
 	/*<replacement>*/
-	var util = __webpack_require__(9);
-	util.inherits = __webpack_require__(14);
+	var util = __webpack_require__(8);
+	util.inherits = __webpack_require__(13);
 	/*</replacement>*/
 
 	util.inherits(Transform, Duplex);
@@ -4764,7 +4858,7 @@
 
 
 /***/ },
-/* 21 */
+/* 20 */
 /***/ function(module, exports, __webpack_require__) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
@@ -4794,11 +4888,11 @@
 
 	module.exports = PassThrough;
 
-	var Transform = __webpack_require__(20);
+	var Transform = __webpack_require__(19);
 
 	/*<replacement>*/
-	var util = __webpack_require__(9);
-	util.inherits = __webpack_require__(14);
+	var util = __webpack_require__(8);
+	util.inherits = __webpack_require__(13);
 	/*</replacement>*/
 
 	util.inherits(PassThrough, Transform);
@@ -4816,17 +4910,24 @@
 
 
 /***/ },
+/* 21 */
+/***/ function(module, exports, __webpack_require__) {
+
+	module.exports = __webpack_require__(18)
+
+
+/***/ },
 /* 22 */
 /***/ function(module, exports, __webpack_require__) {
 
-	module.exports = __webpack_require__(19)
+	module.exports = __webpack_require__(6)
 
 
 /***/ },
 /* 23 */
 /***/ function(module, exports, __webpack_require__) {
 
-	module.exports = __webpack_require__(8)
+	module.exports = __webpack_require__(19)
 
 
 /***/ },
@@ -4840,17 +4941,194 @@
 /* 25 */
 /***/ function(module, exports, __webpack_require__) {
 
-	module.exports = __webpack_require__(21)
+	//filter will reemit the data if cb(err,pass) pass is truthy
+
+	// reduce is more tricky
+	// maybe we want to group the reductions or emit progress updates occasionally
+	// the most basic reduce just emits one 'data' event after it has recieved 'end'
+
+
+	var through = __webpack_require__(26)
+	var Decoder = __webpack_require__(17).StringDecoder
+
+	module.exports = split
+
+	//TODO pass in a function to map across the lines.
+
+	function split (matcher, mapper, options) {
+	  var decoder = new Decoder()
+	  var soFar = ''
+	  var maxLength = options && options.maxLength;
+	  if('function' === typeof matcher)
+	    mapper = matcher, matcher = null
+	  if (!matcher)
+	    matcher = /\r?\n/
+
+	  function emit(stream, piece) {
+	    if(mapper) {
+	      try {
+	        piece = mapper(piece)
+	      }
+	      catch (err) {
+	        return stream.emit('error', err)
+	      }
+	      if('undefined' !== typeof piece)
+	        stream.queue(piece)
+	    }
+	    else
+	      stream.queue(piece)
+	  }
+
+	  function next (stream, buffer) {
+	    var pieces = ((soFar != null ? soFar : '') + buffer).split(matcher)
+	    soFar = pieces.pop()
+
+	    if (maxLength && soFar.length > maxLength)
+	      stream.emit('error', new Error('maximum buffer reached'))
+
+	    for (var i = 0; i < pieces.length; i++) {
+	      var piece = pieces[i]
+	      emit(stream, piece)
+	    }
+	  }
+
+	  return through(function (b) {
+	    next(this, decoder.write(b))
+	  },
+	  function () {
+	    if(decoder.end)
+	      next(this, decoder.end())
+	    if(soFar != null)
+	      emit(this, soFar)
+	    this.queue(null)
+	  })
+	}
+
 
 
 /***/ },
 /* 26 */
 /***/ function(module, exports, __webpack_require__) {
 
+	/* WEBPACK VAR INJECTION */(function(process) {var Stream = __webpack_require__(2)
+
+	// through
+	//
+	// a stream that does nothing but re-emit the input.
+	// useful for aggregating a series of changing but not ending streams into one stream)
+
+	exports = module.exports = through
+	through.through = through
+
+	//create a readable writable stream.
+
+	function through (write, end, opts) {
+	  write = write || function (data) { this.queue(data) }
+	  end = end || function () { this.queue(null) }
+
+	  var ended = false, destroyed = false, buffer = [], _ended = false
+	  var stream = new Stream()
+	  stream.readable = stream.writable = true
+	  stream.paused = false
+
+	//  stream.autoPause   = !(opts && opts.autoPause   === false)
+	  stream.autoDestroy = !(opts && opts.autoDestroy === false)
+
+	  stream.write = function (data) {
+	    write.call(this, data)
+	    return !stream.paused
+	  }
+
+	  function drain() {
+	    while(buffer.length && !stream.paused) {
+	      var data = buffer.shift()
+	      if(null === data)
+	        return stream.emit('end')
+	      else
+	        stream.emit('data', data)
+	    }
+	  }
+
+	  stream.queue = stream.push = function (data) {
+	//    console.error(ended)
+	    if(_ended) return stream
+	    if(data === null) _ended = true
+	    buffer.push(data)
+	    drain()
+	    return stream
+	  }
+
+	  //this will be registered as the first 'end' listener
+	  //must call destroy next tick, to make sure we're after any
+	  //stream piped from here.
+	  //this is only a problem if end is not emitted synchronously.
+	  //a nicer way to do this is to make sure this is the last listener for 'end'
+
+	  stream.on('end', function () {
+	    stream.readable = false
+	    if(!stream.writable && stream.autoDestroy)
+	      process.nextTick(function () {
+	        stream.destroy()
+	      })
+	  })
+
+	  function _end () {
+	    stream.writable = false
+	    end.call(stream)
+	    if(!stream.readable && stream.autoDestroy)
+	      stream.destroy()
+	  }
+
+	  stream.end = function (data) {
+	    if(ended) return
+	    ended = true
+	    if(arguments.length) stream.write(data)
+	    _end() // will emit or queue
+	    return stream
+	  }
+
+	  stream.destroy = function () {
+	    if(destroyed) return
+	    destroyed = true
+	    ended = true
+	    buffer.length = 0
+	    stream.writable = stream.readable = false
+	    stream.emit('close')
+	    return stream
+	  }
+
+	  stream.pause = function () {
+	    if(stream.paused) return
+	    stream.paused = true
+	    return stream
+	  }
+
+	  stream.resume = function () {
+	    if(stream.paused) {
+	      stream.paused = false
+	      stream.emit('resume')
+	    }
+	    drain()
+	    //may have become paused again,
+	    //as drain emits 'data'.
+	    if(!stream.paused)
+	      stream.emit('drain')
+	    return stream
+	  }
+	  return stream
+	}
+
+
+	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(7)))
+
+/***/ },
+/* 27 */
+/***/ function(module, exports, __webpack_require__) {
+
 	"use strict";
-	var window = __webpack_require__(27)
-	var once = __webpack_require__(28)
-	var parseHeaders = __webpack_require__(29)
+	var window = __webpack_require__(28)
+	var once = __webpack_require__(29)
+	var parseHeaders = __webpack_require__(30)
 
 
 	var XHR = window.XMLHttpRequest || noop
@@ -5020,8 +5298,8 @@
 
 
 /***/ },
-/* 27 */
-/***/ function(module, exports, __webpack_require__) {
+/* 28 */
+/***/ function(module, exports) {
 
 	/* WEBPACK VAR INJECTION */(function(global) {if (typeof window !== "undefined") {
 	    module.exports = window;
@@ -5036,8 +5314,8 @@
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
 /***/ },
-/* 28 */
-/***/ function(module, exports, __webpack_require__) {
+/* 29 */
+/***/ function(module, exports) {
 
 	module.exports = once
 
@@ -5061,11 +5339,11 @@
 
 
 /***/ },
-/* 29 */
+/* 30 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var trim = __webpack_require__(30)
-	  , forEach = __webpack_require__(31)
+	var trim = __webpack_require__(31)
+	  , forEach = __webpack_require__(32)
 	  , isArray = function(arg) {
 	      return Object.prototype.toString.call(arg) === '[object Array]';
 	    }
@@ -5097,8 +5375,8 @@
 	}
 
 /***/ },
-/* 30 */
-/***/ function(module, exports, __webpack_require__) {
+/* 31 */
+/***/ function(module, exports) {
 
 	
 	exports = module.exports = trim;
@@ -5117,10 +5395,10 @@
 
 
 /***/ },
-/* 31 */
+/* 32 */
 /***/ function(module, exports, __webpack_require__) {
 
-	var isFunction = __webpack_require__(32)
+	var isFunction = __webpack_require__(33)
 
 	module.exports = forEach
 
@@ -5169,8 +5447,8 @@
 
 
 /***/ },
-/* 32 */
-/***/ function(module, exports, __webpack_require__) {
+/* 33 */
+/***/ function(module, exports) {
 
 	module.exports = isFunction
 
@@ -5187,261 +5465,6 @@
 	      fn === window.confirm ||
 	      fn === window.prompt))
 	};
-
-
-/***/ },
-/* 33 */
-/***/ function(module, exports, __webpack_require__) {
-
-	var stream = __webpack_require__(4);
-	var split = __webpack_require__(1);
-	var xhr = __webpack_require__(26);
-
-
-	function ObjLoader() {
-
-	  this.vertices = [];
-	  this.normals = [];
-	  this.textureCoords = [];
-	  this.faces = [];
-	  this.facesMaterialsIndex = [{materialName: null, materialStartIndex: 0}];
-	  this.materials = [];
-
-	}
-
-	ObjLoader.prototype.load = function(objFilePath, mtlFilePath, callback) {
-
-	  var self = this;
-
-	  if(typeof mtlFilePath === "function") {
-	    callback = mtlFilePath;
-	    mtlFilePath = "";
-	  }
-
-	  xhr(objFilePath, function (err, resp, objFileString) {
-	    if(err) {
-	      /*Error Handling*/
-	      callback(err);
-	    }
-	    /*Create readable stream to read obj file line by line*/
-	    var readable = self.createReadStream(objFileString);
-
-	    readable
-	      .pipe(split())
-	      .on('data', function(line) {
-	        self.parseObj(line);
-	      })
-	      .on('end', function() {
-
-	        /*Start reading .mtl file*/
-	        if(typeof mtlFilePath === "string" && mtlFilePath !== "") {
-	          xhr(mtlFilePath, function (err, resp, mtlFileString) {
-
-	            if(err) {
-	              callback(err);
-	            }
-
-	            var currentMat = {};
-	            var readable = self.createReadStream(mtlFileString);
-
-	            readable
-	              .pipe(split())
-	              .on('data', function(line) {
-	                currentMat = self.parseMtl(line, currentMat);
-	              })
-	              .on('end', function() {
-	                /*Geometry and Materials*/
-	                callback(
-	                  null,
-	                  {
-	                    vertices: self.vertices,
-	                    normals: self.normals,
-	                    textureCoords: self.textureCoords,
-	                    faces: self.faces,
-	                    facesMaterialsIndex: self.facesMaterialsIndex,
-	                    materials: self.materials
-	                  }
-	                );
-	              })
-	              .on('err', function(err) {
-	                /*Error Handling*/
-	                callback(err)
-	              });
-	          });
-	        }
-	        else {
-	          /*Only Geometry*/
-	          callback(
-	            null,
-	            {
-	              vertices: self.vertices,
-	              normals: self.normals,
-	              textureCoords: self.textureCoords,
-	              faces: self.faces
-	            }
-	          );
-	        }
-	      })
-	      .on('err', function(err) {
-	        /*Error Handling*/
-	        callback(err);
-	      });
-	  });
-	}
-
-
-	ObjLoader.prototype.createReadStream = function(fileString) {
-	  var readable = new stream.Readable();
-	  readable._read = function noop() {};
-	  readable.push(fileString);
-	  readable.push(null);
-	  return readable;
-	}
-
-
-	ObjLoader.prototype.parseObj = function(line) {
-
-	  /*Not include comment*/
-	  var commentStart = line.indexOf("#");
-	  if(commentStart != -1) {
-	    line = line.substring(0, commentStart);
-	  }
-	  line = line.trim();
-
-	  var splitedLine = line.split(/\s+/);
-
-	  if(splitedLine[0] === 'v') {
-	    var vertex = [Number(splitedLine[1]), Number(splitedLine[2]), Number(splitedLine[3]), splitedLine[4]? 1 : Number(splitedLine[4])];
-	    this.vertices.push(vertex);
-	  }
-	  else if(splitedLine[0] === 'vt') {
-	    var textureCoord = [Number(splitedLine[1]), Number(splitedLine[2]), splitedLine[3]? 1 : Number(splitedLine[3])]
-	    this.textureCoords.push(textureCoord);
-	  }
-	  else if(splitedLine[0] === 'vn') {
-	    var normal = [Number(splitedLine[1]), Number(splitedLine[2]), Number(splitedLine[3])];
-	    this.normals.push(normal);
-	  }
-	  else if(splitedLine[0] === 'f') {
-	    var face = {
-	      indices: [],
-	      texture: [],
-	      normal: []
-	      };
-
-	    for(var i = 1; i < splitedLine.length; ++i) {
-	      var dIndex = splitedLine[i].indexOf('//');
-	      var splitedFaceIndices = splitedLine[i].split(/\W+/);
-
-	      if(dIndex > 0) {
-	        /*Vertex Normal Indices Without Texture Coordinate Indices*/
-	        face.indices.push(splitedFaceIndices[0]);
-	        face.normal.push(splitedFaceIndices[1]);
-	      }
-	      else {
-	        if(splitedFaceIndices.length === 1) {
-	          /*Vertex Indices*/
-	          face.indices.push(splitedFaceIndices[0]);
-	        }
-	        else if(splitedFaceIndices.length === 2) {
-	          /*Vertex Texture Coordinate Indices*/
-	          face.indices.push(splitedFaceIndices[0]);
-	          face.texture.push(splitedFaceIndices[1]);
-	        }
-	        else if(splitedFaceIndices.length === 3) {
-	          /*Vertex Normal Indices*/
-	          face.indices.push(splitedFaceIndices[0]);
-	          face.texture.push(splitedFaceIndices[1]);
-	          face.normal.push(splitedFaceIndices[2]);
-	        }
-	      }
-	    }
-
-	    this.faces.push(face);
-	  }
-	  else if(splitedLine[0] === "usemtl") {
-	    if(this.faces.length === 0) {
-	      this.facesMaterialsIndex[0].materialName = splitedLine[1];
-	    }
-	    else {
-	      var materialName = splitedLine[1];
-	      var materialStartIndex = this.faces.length;
-
-	      this.facesMaterialsIndex.push({materialName: materialName, materialStartIndex: materialStartIndex});
-	    }
-	  }
-	}
-
-
-	ObjLoader.prototype.parseMtl = function(line, currentMat) {
-
-	  /*Not include comment*/
-	  var commentStart = line.indexOf("#");
-	  if(commentStart != -1) {
-	    line = line.substring(0, commentStart);
-	  }
-
-	  line = line.trim();
-	  var splitedLine = line.split(/\s+/);
-
-	  if(splitedLine[0] === "newmtl") {
-	    if(currentMat.name) {
-	      this.materials.push(currentMat);
-	      currentMat = {};
-	    }
-	    currentMat.name = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "Ka") {
-	    currentMat.ambient = [];
-	    for(var i = 0; i < 3; ++i) {
-	      currentMat.ambient.push(splitedLine[i+1]);
-	    }
-	  }
-	  else if(splitedLine[0] === "Kd") {
-	    currentMat.diffuse = [];
-	    for(var i = 0; i < 3; ++i) {
-	      currentMat.diffuse.push(splitedLine[i+1]);
-	    }
-	  }
-	  else if(splitedLine[0] === "Ks") {
-	    currentMat.specular = [];
-	    for(var i = 0; i < 3; ++i) {
-	      currentMat.specular.push(splitedLine[i+1]);
-	    }
-	  }
-	  else if(splitedLine[0] === "Ns") {
-	    currentMat.specularExponent = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "d" || splitedLine[0] === "Tr") {
-	    currentMat.transparent = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "illum") {
-	    currentMat.illumMode = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "map_Ka") {
-	    currentMat.ambientMap = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "map_Kd") {
-	    currentMat.diffuseMap = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "map_Ks") {
-	    currentMat.specularMap = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "map_d") {
-	    currentMat.alphaMat = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "map_bump" || splitedLine[0] === "bump") {
-	    currentMat.bumpMap = splitedLine[1];
-	  }
-	  else if(splitedLine[0] === "disp") {
-	    currentMat.displacementMap = splitedLine[1];
-	  }
-
-	  return currentMat;
-	}
-
-
-	module.exports = ObjLoader;
 
 
 /***/ },
@@ -40598,7 +40621,7 @@
 
 /***/ },
 /* 35 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ function(module, exports) {
 
 	module.exports = function(THREE) {
 	    var MOUSE = THREE.MOUSE
@@ -41052,7 +41075,7 @@
 
 	        }
 
-	        function onMouseUp( /* event */ ) {
+	        function onMouseUp( event ) {
 
 	            if ( scope.enabled === false ) return;
 
@@ -41281,6 +41304,7 @@
 	    OrbitControls.prototype.constructor = OrbitControls;
 	    return OrbitControls;
 	}
+
 
 /***/ }
 /******/ ]);

@@ -1,14 +1,12 @@
 var path = require('path');
 var webpack = require('webpack');
-var node_modules_dir = path.resolve(__dirname, 'node_modules');
 
 module.exports = {
     entry: {
-        app: path.resolve(__dirname, "index.js"),
-        vendors: ['split', 'xhr']
+        app: path.resolve(__dirname + "/example/", "index.js")
     },
     output: {
-        path: path.resolve(__dirname, "public"),
+        path: path.resolve(__dirname + "/example/", "public"),
         filename: "bundle.js"
     },
     resolve: {

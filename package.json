@@ -4,7 +4,9 @@
   "description": "OBJ and MTL loader for WebGL",
   "main": "src/objLoader.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node ./example/app.js",
+    "dev": "webpack-dev-server --devtool eval --progress --colors --content-base build"
   },
   "repository": {
     "type": "git",
@@ -22,5 +24,13 @@
   "dependencies": {
     "split": "^0.3.3",
     "xhr": "^2.0.1"
+  },
+  "devDependencies": {
+    "body-parser": "^1.13.2",
+    "express": "^4.13.1",
+    "node-libs-browser": "^0.5.2",
+    "three": "^0.71.0",
+    "three-orbit-controls": "^69.0.5",
+    "webpack": "^1.10.1"
   }
 }
