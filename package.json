@@ -4,7 +4,7 @@
   "description": "OBJ and MTL loader for WebGL",
   "main": "src/objLoader.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "mocha --reporter spec test/",
     "start": "node ./example/app.js",
     "dev": "webpack-dev-server --devtool eval --progress --colors --content-base build"
   },
@@ -31,6 +31,9 @@
     "node-libs-browser": "^0.5.2",
     "three": "^0.71.0",
     "three-orbit-controls": "^69.0.5",
-    "webpack": "^1.10.1"
+    "webpack": "^1.10.1",
+    "mocha": "^2.3.4",
+	"chai": "^3.4.1",
+	"sinon": "^1.17.2"
   }
 }
